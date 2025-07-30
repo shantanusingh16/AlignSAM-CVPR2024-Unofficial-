@@ -316,8 +316,8 @@ class SamSegEnv(gym.Env):
         concat_img = np.concatenate([img, gt_mask, mask], axis=1)
 
         if self.render_mode == 'rgb_array':
-            return cv2.cvtColor(concat_img, cv2.COLOR_BGR2RGB)
- 
+            concat_img = cv2.cvtColor(concat_img, cv2.COLOR_BGR2RGB)
+
         cv2.putText(concat_img,
                     self._curr_target_cat,
                     (10, concat_img.shape[0]//2),

@@ -3,7 +3,7 @@ cprint==1.2.2
 yacs==0.1.8
 pyfakefs==5.6.0
 Pillow-SIMD==9.0.0.post1
-numpy==1.26.4
+numpy==1.24.4
 pytorch-lightning==2.2.5
 torch==1.13.1+cu117
 torchaudio==0.13.1+cu117
