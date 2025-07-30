@@ -67,7 +67,7 @@ class SamSegEnv(gym.Env):
         self.observation_space = spaces.Dict(
             {
                 "image": spaces.Box(0, 255, shape=(*img_shape,), dtype=np.uint8),
-                "target_category": spaces.Discrete(len(self.target_categories)),
+                "target_category": spaces.Text(max_length=max(map(len, target_categories))),
                 "sam_image_embeddings": spaces.Box(-np.inf, np.inf, shape=(*embedding_shape,), dtype=np.float32),
                 "sam_pred_mask_prob": spaces.Box(0, 1, shape=(*mask_shape,), dtype=np.float32),
             }

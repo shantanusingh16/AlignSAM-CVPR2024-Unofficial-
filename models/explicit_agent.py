@@ -25,6 +25,8 @@ class ExplicitAgent(nn.Module):
             agent_cfg['clip_text_prompt']
         )
 
+        self.similarity_scale_temperature = agent_cfg['similarity_scale_temperature']
+
         self.sam_network = nn.Sequential(
             layer_init(nn.Conv2d(256, 128, 3, stride=2, padding=1, padding_mode='zeros')), # (b, 256, 64, 64)
             nn.BatchNorm2d(128),
@@ -113,6 +115,19 @@ class ExplicitAgent(nn.Module):
                                                     (embedding_shape[2], embedding_shape[3]))
             
             similarity_map = similarity_map.permute(0, 3, 1, 2) # (b, h, w, c) -> (b, c, h, w)
+
+            # Apply scaling to match the target category for each batch
+            exp_similarity_map = torch.exp(similarity_map / self.similarity_scale_temperature)
+            for batch_idx, cat in enumerate(obs["target_category"]):
+                if cat in self.clip_text_prompt:
+                    cat_idx = self.clip_text_prompt.index(cat)
+                    exp_similarity_map[batch_idx, cat_idx] *= self.similarity_scale_temperature
+                    exp_similarity_map[batch_idx, :] /= torch.sum(exp_similarity_map[batch_idx, :], dim=0, keepdim=True)
+                    similarity_map[batch_idx, :, :, :] *= exp_similarity_map[batch_idx, :]
+                else:
+                    # If the category is not found, set it to zero
+                    similarity_map[batch_idx, :, :, :] = 0.0
+
 
             return similarity_map
 

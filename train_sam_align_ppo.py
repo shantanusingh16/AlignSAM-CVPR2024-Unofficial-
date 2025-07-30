@@ -29,8 +29,8 @@ class Args:
     """seed of the experiment"""
     torch_deterministic: bool = True
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
-    cuda: bool = True
-    """if toggled, cuda will be enabled by default"""
+    accelerator: bool = True
+    """if toggled, accelerator (gpu, mps etc) will be enabled by default"""
     mlflow_project_name: str = "sam_align"
     """the MLFlow's project name"""
     mlflow_user: str = None
@@ -49,7 +49,7 @@ class Args:
     # Algorithm specific arguments
     env_id: str = "SamSegEnv-v0"
     """the id of the environment"""
-    env_cfg_path: str = "configs/envs/repvit_sam_cbseg.yaml"
+    env_cfg_path: str = "configs/envs/repvit_sam_coco.yaml"
     """the environment configuration path"""
     agent_cfg_path: str = "configs/agents/explicit_agent.yaml"
     """the type of the agent"""
@@ -117,7 +117,10 @@ def make_env(env_id, idx, capture_video, capture_ep_freq, log_dir, env_cfg):
 def load_obs_to_tensor(obs, device):
     obs_tensor = dict()
     for key in obs.keys():
-        obs_tensor[key] = torch.Tensor(obs[key]).to(device)
+        if isinstance(obs[key], np.ndarray):
+            obs_tensor[key] = torch.Tensor(obs[key]).to(device)
+        else:
+            obs_tensor[key] = obs[key]
     return obs_tensor
 
 def update_obs_at_step(obs, next_obs, step):
@@ -127,7 +130,7 @@ def update_obs_at_step(obs, next_obs, step):
 def flatten_obs(obs):
     new_obs = dict()
     for key, val in obs.items():
-        val_shape = list(val.size())
+        val_shape = list(val.shape)
         num_steps, num_envs = val_shape[:2] 
         new_obs[key] = val.reshape(num_steps * num_envs, *val_shape[2:])
     return new_obs
@@ -173,7 +176,15 @@ if __name__ == "__main__":
     if (args.resume_from is not None) and (not os.path.exists(args.resume_from)):
         raise ValueError(f"resume_from {args.resume_from} does not exist")
     
-    device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+    if args.accelerator:
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
+    else:
+        device = torch.device("cpu")
 
     mlflow_run_tags = {
         "user": args.mlflow_user,
@@ -210,7 +221,12 @@ if __name__ == "__main__":
         obs = dict()
         # obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
         for key, space in envs.single_observation_space.spaces.items():
-            obs[key] = torch.zeros((args.num_steps, args.num_envs) + space.shape).to(device)
+            if isinstance(space, gym.spaces.Box):
+                obs[key] = torch.zeros((args.num_steps, args.num_envs) + space.shape).to(device)
+            elif isinstance(space, gym.spaces.Text):
+                obs[key] = np.array([""] * (args.num_steps * args.num_envs), dtype=object).reshape((args.num_steps, args.num_envs))
+            else:
+                raise NotImplementedError(f"Unsupported observation space type: {type(space)}")
         actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
         logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
         rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -247,7 +263,7 @@ if __name__ == "__main__":
                 # TRY NOT TO MODIFY: execute the game and log data.
                 next_raw_obs, reward, terminations, truncations, infos = envs.step(action.cpu().numpy())
                 next_done = np.logical_or(terminations, truncations)
-                rewards[step] = torch.tensor(reward).to(device).view(-1)
+                rewards[step] = torch.Tensor(reward).to(device).view(-1)
                 next_obs = load_obs_to_tensor(next_raw_obs, device)
                 next_done = torch.Tensor(next_done).to(device)
 

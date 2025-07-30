@@ -8,7 +8,7 @@ num_patches: 32  # along one axis
 render_mode: 'rgb_array'
 
 target_categories : ['person', 'cat', 'dog', 'car', 'bicycle', 'bus']
-data_config:
+dataset_config:
   type: 'coco'
   data_dir: 'data/coco-dataset'
   data_type: 'val2017'

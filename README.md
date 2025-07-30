@@ -37,7 +37,7 @@ cd AlignSAM-CVPR2024-Unofficial-
 - Start training:
 
     ```bash
-    python train_sam_align_ppo.py --agent_cfg_path explicit_agent.yaml --env_cfg_path repvit_sam_coco.yaml
+    python train_sam_align_ppo.py --agent_cfg_path configs/agents/explicit_agent.yaml --env_cfg_path configs/envs/repvit_sam_coco.yaml
     ```
 
 ## Project Structure
