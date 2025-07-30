@@ -30,7 +30,20 @@ cd AlignSAM-CVPR2024-Unofficial-
     ```
 
 ## Usage
-- Create a data directory and download/symlink the ```CoCo Dataset``` inside it.
+- Create a data directory and download/symlink the ```CoCo Dataset``` inside it. Follow the reference directory structure below to work with existing config files:
+
+  ```
+    data/
+    ├── images/
+    ├──── val2017/ 
+    ├──────── 00000001.jpg
+    ├──────── 00000002.jpg
+    ├            .
+    ├            .
+    ├            .
+    ├── annotations/
+    ├──── instances_val2017.json
+  ``` 
 
 - Edit configuration files in ```configs/``` to update paths, categories etc.
 

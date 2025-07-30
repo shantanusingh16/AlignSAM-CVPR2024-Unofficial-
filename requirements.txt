@@ -20,3 +20,4 @@ tensorboard-plugin-wit==1.8.1
 timm==0.5.4
 ftfy==6.2.3
 regex==2024.11.6
+pycocotools==2.0.7

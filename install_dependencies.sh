@@ -17,8 +17,12 @@ pip install --user -e .
 # Dowload the sam weights using wget
 mkdir weights
 cd weights
-wget https://github.com/THU-MIG/RepViT/releases/download/v1.0/repvit_sam.pt
 
+if [ ! -f repvit_sam.pt ]; then
+    wget https://github.com/THU-MIG/RepViT/releases/download/v1.0/repvit_sam.pt
+else
+    echo "repvit_sam.pt already exists, skipping download."
+fi
 
 echo "Dependencies installed successfully"
 

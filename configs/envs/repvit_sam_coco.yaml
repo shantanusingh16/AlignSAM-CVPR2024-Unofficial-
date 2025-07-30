@@ -15,4 +15,4 @@ dataset_config:
   seed: 42
   max_instances: 3
 
-sam_ckpt_fp: 'weights/repvit_sam.pt'
+sam_ckpt_fp: 'RepViT/sam/weights/repvit_sam.pt'
