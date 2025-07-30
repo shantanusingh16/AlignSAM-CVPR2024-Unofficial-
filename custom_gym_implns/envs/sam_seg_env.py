@@ -57,6 +57,7 @@ class SamSegEnv(gym.Env):
         self._categorical_instance_masks = None # GT binary instance masks with cat-ids as values instead of 1
         self._num_steps = 0
         self._last_actions = {'input_points':[], 'input_labels':[]}
+        self._last_reward = 0
         self._last_best_score = 0
         self.render_mode = render_mode
 
@@ -245,6 +246,8 @@ class SamSegEnv(gym.Env):
         # dice_reward_coefficient = 2.0 if len(self._last_actions)> 0 else 0.0
         # reward += int((dice_reward > 0.05)) * dice_reward_coefficient
 
+        self._last_reward = reward
+
         return reward
 
 
@@ -306,6 +309,7 @@ class SamSegEnv(gym.Env):
 
         self._last_actions = {'input_points':[], 'input_labels':[]}
         self._num_steps = 0
+        self._last_reward = 0
         self._last_best_score = 0
 
         observation = self._get_obs()
@@ -337,9 +341,19 @@ class SamSegEnv(gym.Env):
         if self.render_mode == 'rgb_array':
             concat_img = cv2.cvtColor(concat_img, cv2.COLOR_BGR2RGB)
 
+        # Add the target category text to the image
         cv2.putText(concat_img,
                     self._curr_target_cat,
                     (10, concat_img.shape[0]//2),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 255, 255),
+                    2)
+        
+        # Add the last reward text to the image
+        cv2.putText(concat_img,
+                    f"Reward: {self._last_reward:.2f}",
+                    (10, concat_img.shape[0]//2 + 50),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,
                     (255, 255, 255),
