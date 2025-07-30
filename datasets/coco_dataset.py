@@ -1,7 +1,6 @@
 import os
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
 from pycocotools.coco import COCO
 
 
@@ -82,6 +81,8 @@ class CocoDataset:
 
     
 if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    
     data_dir = '/Users/shantanu/Datasets/coco-dataset'
     data_type = 'val2017'
     target_categories = ['person', 'cat']

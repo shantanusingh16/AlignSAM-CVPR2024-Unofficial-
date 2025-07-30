@@ -8,6 +8,11 @@ from torchvision.transforms.functional import to_pil_image
 from CLIP_Surgery import clip
 from CLIP_Surgery.clip.clip_model import ResidualAttentionBlock
 
+import mlflow
+import matplotlib
+matplotlib.use('Agg')
+
+import matplotlib.pyplot as plt
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
@@ -26,6 +31,7 @@ class ExplicitAgent(nn.Module):
         )
 
         self.similarity_scale_temperature = agent_cfg['similarity_scale_temperature']
+        self.debug_mode = agent_cfg.get('debug_mode', False)
 
         self.sam_network = nn.Sequential(
             layer_init(nn.Conv2d(256, 128, 3, stride=2, padding=1, padding_mode='zeros')), # (b, 256, 64, 64)
@@ -116,18 +122,41 @@ class ExplicitAgent(nn.Module):
             
             similarity_map = similarity_map.permute(0, 3, 1, 2) # (b, h, w, c) -> (b, c, h, w)
 
-            # Apply scaling to match the target category for each batch
-            exp_similarity_map = torch.exp(similarity_map / self.similarity_scale_temperature)
+            # Scale the similarity map
+            channel_scale_map = torch.zeros(len(self.clip_text_prompt), 
+                                            dtype=torch.float32, 
+                                            device=similarity_map.device,
+                                            requires_grad=False)
             for batch_idx, cat in enumerate(obs["target_category"]):
                 if cat in self.clip_text_prompt:
                     cat_idx = self.clip_text_prompt.index(cat)
-                    exp_similarity_map[batch_idx, cat_idx] *= self.similarity_scale_temperature
-                    exp_similarity_map[batch_idx, :] /= torch.sum(exp_similarity_map[batch_idx, :], dim=0, keepdim=True)
-                    similarity_map[batch_idx, :, :, :] *= exp_similarity_map[batch_idx, :]
+                    channel_scale_map[cat_idx] = 1 / self.similarity_scale_temperature
                 else:
-                    # If the category is not found, set it to zero
-                    similarity_map[batch_idx, :, :, :] = 0.0
+                    continue # Skip, since this would just scale down values of all channels
+                
+                # Use soft-max style normalization
+                channel_scale_map = torch.exp(channel_scale_map - torch.logsumexp(channel_scale_map, dim=0))
+                
+                # Add offset to boost the highest channel to scale to 1
+                channel_scale_map += 1 - channel_scale_map.max()
 
+                similarity_map[batch_idx] *= channel_scale_map.view(-1, 1, 1)  # Scale each channel
+
+            if self.debug_mode:
+                # Debugging: visualize the similarity map
+                num_plots = len(self.clip_text_prompt) + 1
+                for i in range(similarity_map.size(0)):
+                    fig, ax = plt.subplots(ncols=num_plots, figsize=(5*num_plots, 3))
+                    ax[0].imshow(obs["image"][i].cpu().numpy().astype(np.uint8))
+                    ax[0].set_title(obs["target_category"][i])
+                    for j, cat in enumerate(self.clip_text_prompt):
+                        sim_map = similarity_map[i, j].cpu().numpy()
+                        # sim_map = (sim_map - sim_map.min()) / (sim_map.max() - sim_map.min())  # Normalize
+                        ax[j+1].imshow(sim_map, cmap='hot', vmin=0, vmax=1)
+                        ax[j+1].set_title(cat)
+                    plt.tight_layout()
+                    mlflow.log_figure(fig, f"similarity_map_{i}.png")
+                    plt.close(fig)
 
             return similarity_map
 

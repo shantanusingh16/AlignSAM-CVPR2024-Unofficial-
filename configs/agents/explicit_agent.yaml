@@ -2,4 +2,5 @@ type: "explicit"
 clip_model_name: "CS-ViT-B/16"  # Don't use the default Clip model here.
 clip_image_size: [224, 224]
 clip_text_prompt: ['person', 'cat', 'dog', 'car', 'bicycle', 'bus']
-similarity_scale_temperature: 3
+similarity_scale_temperature: 0.33
+debug_mode: False
