@@ -4,7 +4,9 @@ mask_shape: [256, 256] # HxW
 render_frame_shape: [320, 426] # HxW
 max_steps: 5
 # img_patch_size: 16
-num_patches: 32  # along one axis 
+num_patches: 32  # along one axis
+penalize_for_wrong_input: True
+use_dice_score: False
 render_mode: 'rgb_array'
 
 target_categories : ['person', 'cat', 'dog', 'car', 'bicycle', 'bus']
