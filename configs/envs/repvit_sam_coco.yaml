@@ -15,6 +15,6 @@ dataset_config:
   data_dir: 'data/coco-dataset'
   data_type: 'val2017'
   seed: 42
-  max_instances: 3
+  max_instances: 5
 
 sam_ckpt_fp: 'RepViT/sam/weights/repvit_sam.pt'

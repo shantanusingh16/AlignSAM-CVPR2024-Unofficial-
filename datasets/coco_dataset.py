@@ -58,6 +58,9 @@ class CocoDataset:
             masks = []
             # Select the top_k largest annotations
             for ann in anns[:self.max_instances]:
+                # Skip crowd annotations
+                if ann['iscrowd']:
+                    continue
                 # Ensure the largest annotation is significant enough
                 # to be considered a valid sample
                 # This is a heuristic to avoid very small annotations
@@ -82,7 +85,7 @@ class CocoDataset:
     
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    
+
     data_dir = '/Users/shantanu/Datasets/coco-dataset'
     data_type = 'val2017'
     target_categories = ['person', 'cat']

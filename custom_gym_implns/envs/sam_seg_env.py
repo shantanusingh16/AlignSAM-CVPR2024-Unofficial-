@@ -83,11 +83,12 @@ class SamSegEnv(gym.Env):
             num_width_patches = num_height_patches = num_patches
             width_patch_size = img_w / num_width_patches
             height_patch_size = img_h / num_height_patches
+
+            self.img_patch_size = max(width_patch_size, height_patch_size) 
         else:
             raise ValueError("Either img_patch_size or num_patches should be provided")
         # print(num_width_patches, num_height_patches)
 
-        
         # The following dictionary maps abstract actions from `self.action_space` to
         # the input_points and input_labels submitted to SAM in if that action is taken.
         # I.e. 0 corresponds to "(0, 0), positive", 1 to "(0, 0), negative",
@@ -201,6 +202,18 @@ class SamSegEnv(gym.Env):
         if act == 'add':
             input_point = self._last_actions["input_points"][-1]
             input_label = self._last_actions["input_labels"][-1]
+
+            # Check if the input is repeated
+            if len(self._last_actions["input_points"]) > 1:
+                point_dist = lambda x: np.linalg.norm([input_point[0]-x[0], input_point[1]-x[1]])
+                input_dist = np.array([point_dist(point) + (1e6 * (label != input_label)) \
+                                       for (point, label) in zip(self._last_actions["input_points"][:-1], 
+                                                                 self._last_actions["input_labels"][:-1])])
+                # Use 2 * img_patch_size as a threshold
+                dist_coeff = 1 - np.exp(-np.min(input_dist) / (2 * self.img_patch_size))
+            else:
+                dist_coeff = 1.0
+
             point_image_indices = tuple(map(int, (input_point[1], input_point[0])))
             # print(point_image_indices, input_label)
 
@@ -219,12 +232,19 @@ class SamSegEnv(gym.Env):
             # if num_input_label > int(self.max_steps * 0.5):
             #     correct_input_reward = 0  # Penalize for too many same input types (even if the last input was correct)
 
+            correct_input_reward *= dist_coeff
+
+            # Only add dice reward if the input is negative
+            # Boosts using negative for refining masks
+            correct_input_reward += int(dice_reward > 0.01) * (input_label == 0) * 0.5
+
         # reward = dice_reward + correct_input_reward
         reward = correct_input_reward
 
-        # Add bonus reward if dice score is above a threshold and not the first action
-        dice_reward_coefficient = 2.0 if len(self._last_actions)> 0 else 0.0
-        reward += int((dice_reward > 0.05)) * dice_reward_coefficient
+        # # Add bonus reward if dice score is above a threshold and not the first action
+        # dice_reward_coefficient = 2.0 if len(self._last_actions)> 0 else 0.0
+        # reward += int((dice_reward > 0.05)) * dice_reward_coefficient
+
         return reward
 
 
@@ -299,7 +319,6 @@ class SamSegEnv(gym.Env):
 
         mask_instances_color = np.zeros((*self._categorical_instance_masks.shape[:2], 3), dtype=np.uint8)
         num_instances = self._categorical_instance_masks.shape[-1]
-        print(num_instances)
         for idx in range(num_instances):
             instance_color = (idx + 1) * int(255 / num_instances)
             mask_instances_color[self._categorical_instance_masks[..., idx] > 0] = [
@@ -336,7 +355,7 @@ if __name__ == "__main__":
     mask_shape = (256, 256) # HxW
     render_frame_shape = (320, 426) # HxW
     max_steps = 5
-    penalize_for_wrong_input = True 
+    penalize_for_wrong_input = False 
     use_dice_score = True
     img_patch_size = 32
     render_mode = 'human'
@@ -347,10 +366,10 @@ if __name__ == "__main__":
         'data_dir': os.path.join(os.getcwd(), 'data', 'coco-dataset'),
         'data_type': 'val2017',
         'seed': 42,
-        'max_instances': 3,  # Maximum number of instances per image
+        'max_instances': 5,  # Maximum number of instances per image
     }
 
-    sam_ckpt_fp = os.path.join(os.getcwd(), 'weights', 'repvit_sam.pt')
+    sam_ckpt_fp = os.path.join(os.getcwd(), 'RepViT', 'sam', 'weights', 'repvit_sam.pt')
 
     env = SamSegEnv(img_shape=img_shape, 
                     embedding_shape=embedding_shape,
@@ -397,7 +416,7 @@ if __name__ == "__main__":
     total_reward = 0
     while True:
         obs, reward, done, trunc, info = env.step(sample_action)
-        print(reward)
+        print('reward:', reward)
         total_reward += reward
 
         # print(obs['image'].shape, info['sam_pred_mask'].shape)
