@@ -176,7 +176,42 @@ class SamSegEnv(gym.Env):
                                for (point, label) in self._action_to_input.values() 
                                if type(point) == tuple])
         sample_action = np.argmin(input_dist)
+
         return sample_action
+    
+
+    def refine_input_point(self, input_point, input_type):
+        if input_type != 'pos':
+            return input_point
+        
+        if self._categorical_instance_masks is None:
+            return input_point
+        
+        if np.any(self._categorical_instance_masks[input_point[1], input_point[0]] == 1):
+            return input_point
+        
+        # Move to match the center of foreground portion of the patch, if present
+        patch_half_size = self.img_patch_size // 2
+        patch_around_point_xrange = (max(0, input_point[0] - patch_half_size),
+                                        min(self.img_shape[1], input_point[0] + patch_half_size))
+        patch_around_point_yrange = (max(0, input_point[1] - patch_half_size),
+                                        min(self.img_shape[0], input_point[1] + patch_half_size))
+        # Get the patch around the point
+        mask_patch = self._categorical_instance_masks[patch_around_point_yrange[0]:patch_around_point_yrange[1],
+                                                        patch_around_point_xrange[0]:patch_around_point_xrange[1]]
+        mask_patch = np.any(mask_patch > 0, axis=-1)  # Combine all instance masks into a single binary mask    
+
+        # If the patch is empty, return the original action
+        if not np.any(mask_patch > 0):
+            return input_point
+        
+        # Move the input point to the center of the foreground portion of the patch
+        foreground_indices = np.argwhere(mask_patch)
+        foreground_indices_center_x = np.mean(foreground_indices[:, 1]) + patch_around_point_xrange[0]
+        foreground_indices_center_y = np.mean(foreground_indices[:, 0]) + patch_around_point_yrange[0]
+        input_point = (int(foreground_indices_center_x), int(foreground_indices_center_y)) 
+        
+        return input_point
 
 
     def compute_reward(self, pred_mask, act):
@@ -276,6 +311,10 @@ class SamSegEnv(gym.Env):
         elif input_type in ['pos', 'neg']:
             # Add a new input point
             input_label = 1 if input_type == 'pos' else 0 # label 0-neg, 1-pos
+
+            # Refine the input to match the center of the 
+            # foreground portion of the patch, if present
+            input_point = self.refine_input_point(input_point, input_type)
 
             self._last_actions["input_points"].append(input_point)
             self._last_actions["input_labels"].append(input_label)

@@ -76,7 +76,7 @@ class CocoDataset:
             if len(masks) == 0:
                 continue
             
-            sample_mask = np.stack(masks, axis=-1)
+            sample_mask = np.stack(masks, axis=-1) # (h, w, num_instances)
             break
 
         # Ensure the sample image is in BGR format
