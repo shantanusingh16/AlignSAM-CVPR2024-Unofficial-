@@ -224,7 +224,11 @@ if __name__ == "__main__":
             if isinstance(space, gym.spaces.Box):
                 obs[key] = torch.zeros((args.num_steps, args.num_envs) + space.shape).to(device)
             elif isinstance(space, gym.spaces.Text):
-                obs[key] = np.array([""] * (args.num_steps * args.num_envs), dtype=object).reshape((args.num_steps, args.num_envs))
+                obs[key] = np.array([""] * (args.num_steps * args.num_envs), 
+                                    dtype=object).reshape((args.num_steps, args.num_envs))
+            elif isinstance(space, gym.spaces.Discrete):
+                obs[key] = torch.zeros((args.num_steps, args.num_envs), 
+                                       dtype=torch.int64).to(device)
             else:
                 raise NotImplementedError(f"Unsupported observation space type: {type(space)}")
         actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)

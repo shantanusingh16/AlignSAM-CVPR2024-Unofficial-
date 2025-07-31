@@ -71,6 +71,7 @@ class SamSegEnv(gym.Env):
                 "target_category": spaces.Text(max_length=max(map(len, target_categories))),
                 "sam_image_embeddings": spaces.Box(-np.inf, np.inf, shape=(*embedding_shape,), dtype=np.float32),
                 "sam_pred_mask_prob": spaces.Box(0, 1, shape=(*mask_shape,), dtype=np.float32),
+                "num_steps": spaces.Discrete(max_steps + 1 if max_steps is not None else 1000),
             }
         )
 
@@ -126,7 +127,7 @@ class SamSegEnv(gym.Env):
         self._image = cv2.resize(img, self.img_shape[:2][::-1])
         self.sam_predictor.set_image(self._image)
         self._sam_image_embeddings = self.sam_predictor.get_image_embeddings()
-        self._sam_pred_mask_prob = np.zeros(self.mask_shape, dtype=np.float32)
+        self._sam_pred_mask_prob = np.ones(self.mask_shape, dtype=np.float32) * 0.5
         self._sam_pred_mask = np.zeros(self.img_shape[:2], dtype=np.float32)
 
         resized_mask = cv2.resize(categorical_instance_masks, 
@@ -145,6 +146,7 @@ class SamSegEnv(gym.Env):
             "target_category": self._curr_target_cat,
             "sam_image_embeddings": self._sam_image_embeddings,
             "sam_pred_mask_prob": self._sam_pred_mask_prob,
+            "num_steps": self._num_steps,
         }
     
 
@@ -197,6 +199,7 @@ class SamSegEnv(gym.Env):
             dice_gain = max(0, dice_score - self._last_best_score)
             self._last_best_score = max(dice_score, self._last_best_score)
         else:
+            dice_score = 0.0
             dice_gain = 0.0
 
         correct_input_reward = 0
@@ -259,9 +262,8 @@ class SamSegEnv(gym.Env):
         input_point, input_type = self._action_to_input[action]
         
         terminated = input_type == 'done'
-        trunc = (self.max_steps is not None and self._num_steps >= self.max_steps)
-        if terminated or trunc:
-            return self._get_obs(), 0, terminated, trunc, self._get_info()
+        if terminated:
+            return self._get_obs(), 0, terminated, False, self._get_info()
         
     
         act = None
@@ -290,7 +292,7 @@ class SamSegEnv(gym.Env):
             self.run_sam()
         else:
             # Set the mask and mask_prob to initial state
-            self._sam_pred_mask_prob = np.zeros(self.mask_shape, dtype=np.float32)
+            self._sam_pred_mask_prob = np.ones(self.mask_shape, dtype=np.float32) * 0.5
             self._sam_pred_mask = np.zeros(self.img_shape[:2], dtype=np.float32)
         
         self._num_steps += 1
@@ -299,6 +301,8 @@ class SamSegEnv(gym.Env):
 
         observation = self._get_obs()
         info = self._get_info()
+
+        trunc = (self.max_steps is not None and self._num_steps >= self.max_steps)
 
         return observation, reward, False, trunc, info
     

@@ -5,8 +5,8 @@ render_frame_shape: [320, 426] # HxW
 max_steps: 5
 # img_patch_size: 16
 num_patches: 32  # along one axis
-penalize_for_wrong_input: True
-use_dice_score: False
+penalize_for_wrong_input: False
+use_dice_score: True
 render_mode: 'rgb_array'
 
 target_categories : ['person', 'cat', 'dog', 'car', 'bicycle', 'bus']

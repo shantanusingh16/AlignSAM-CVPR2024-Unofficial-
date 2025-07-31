@@ -76,6 +76,14 @@ class ExplicitAgent(nn.Module):
         self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
         self.critic = layer_init(nn.Linear(512, 1), std=1)
 
+        def get_base_env(env):
+            while hasattr(env, 'env'):
+                env = env.env
+            return env
+        
+        base_env = get_base_env(envs.envs[0])
+        self.max_steps = base_env.max_steps if hasattr(base_env, 'max_steps') else None
+
 
     def setup_clip(self, clip_model_name, clip_image_size, clip_text_prompt):
         clip_model, _ = clip.load(clip_model_name, device='cpu')
@@ -169,8 +177,16 @@ class ExplicitAgent(nn.Module):
         resized_sam_mask_prob = nn.functional.interpolate(
             sam_pred_mask_prob, size=(embedding_shape[2], embedding_shape[3]), 
             mode="bilinear", align_corners=False)
-        resized_sam_mask_prob = resized_sam_mask_prob.repeat(1, embedding_shape[1], 1, 1)
 
+        # Rescale the mask probabilities based on number of steps
+        if ("num_steps" in obs) and self.max_steps is not None:
+            eps = 1e-6
+            temp = torch.exp(self.max_steps - obs["num_steps"])  # Exponential decay
+            p = torch.clamp(resized_sam_mask_prob, min=eps, max=1-eps)
+            logit = torch.logit(p)
+            resized_sam_mask_prob = torch.sigmoid(logit / temp.view(-1, 1, 1, 1))
+
+        resized_sam_mask_prob = resized_sam_mask_prob.repeat(1, embedding_shape[1], 1, 1)
         x = sam_image_embeddings * resized_sam_mask_prob 
         x += sam_image_embeddings # skip connection
 
