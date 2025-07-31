@@ -152,19 +152,19 @@ class ExplicitAgent(nn.Module):
 
             if self.debug_mode:
                 # Debugging: visualize the similarity map
-                num_plots = len(self.clip_text_prompt) + 1
-                for i in range(similarity_map.size(0)):
-                    fig, ax = plt.subplots(ncols=num_plots, figsize=(5*num_plots, 3))
-                    ax[0].imshow(obs["image"][i].cpu().numpy().astype(np.uint8))
-                    ax[0].set_title(obs["target_category"][i])
+                ncols = len(self.clip_text_prompt) + 1
+                nrows = min(similarity_map.size(0), 2)  # Show at most 2 rows
+                fig, ax = plt.subplots(ncols=ncols, nrows=nrows, figsize=(5*ncols, 3*nrows))
+                for i in range(nrows):
+                    ax[i, 0].imshow(obs["image"][i].cpu().numpy().astype(np.uint8))
+                    ax[i, 0].set_title(obs["target_category"][i])
                     for j, cat in enumerate(self.clip_text_prompt):
                         sim_map = similarity_map[i, j].cpu().numpy()
-                        # sim_map = (sim_map - sim_map.min()) / (sim_map.max() - sim_map.min())  # Normalize
-                        ax[j+1].imshow(sim_map, cmap='hot', vmin=0, vmax=1)
-                        ax[j+1].set_title(cat)
-                    plt.tight_layout()
-                    mlflow.log_figure(fig, f"similarity_map_{i}.png")
-                    plt.close(fig)
+                        ax[i, j+1].imshow(sim_map, cmap='hot', vmin=0, vmax=1)
+                        ax[i, j+1].set_title(cat)
+                plt.tight_layout()
+                mlflow.log_figure(fig, f"similarity_map_{i}.png")
+                plt.close(fig)
 
             return similarity_map
 
@@ -186,6 +186,22 @@ class ExplicitAgent(nn.Module):
             logit = torch.logit(p)
             resized_sam_mask_prob = torch.sigmoid(logit / temp.view(-1, 1, 1, 1))
 
+        if self.debug_mode:
+            # Debugging: visualize the sam embedding and prob map
+
+            fig, ax = plt.subplots(ncols=2, nrows=2, figsize=(6, 6))
+            ax = ax.flatten()
+            for i in range(2):
+                ax[2*i].imshow(obs["image"][i].cpu().numpy().astype(np.uint8))
+                ax[2*i].set_title(obs["target_category"][i])
+                prob_map = resized_sam_mask_prob[i, 0].cpu().numpy()
+                ax[2*i + 1].imshow(prob_map, cmap='hot', vmin=0, vmax=1)
+                ax[2*i +1].set_title("Steps: {}".format(obs.get("num_steps", ["NA", "NA"])[i]))
+            plt.tight_layout()
+            plt.axis('off')
+            mlflow.log_figure(fig, f"sam_prob_map{i}.png")
+            plt.close(fig)
+        
         resized_sam_mask_prob = resized_sam_mask_prob.repeat(1, embedding_shape[1], 1, 1)
         x = sam_image_embeddings * resized_sam_mask_prob 
         x += sam_image_embeddings # skip connection
