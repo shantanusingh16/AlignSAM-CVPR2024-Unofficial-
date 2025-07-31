@@ -194,10 +194,10 @@ class SamSegEnv(gym.Env):
             union = np.sum(gt_mask) + np.sum(pred_mask) #- intersection
             dice_score = (2 * intersection + eps)/ (union + eps)
 
-            dice_reward = dice_score - self._last_best_score
+            dice_gain = max(0, dice_score - self._last_best_score)
             self._last_best_score = max(dice_score, self._last_best_score)
         else:
-            dice_reward = 0.0
+            dice_gain = 0.0
 
         correct_input_reward = 0
         if act == 'add':
@@ -237,14 +237,15 @@ class SamSegEnv(gym.Env):
 
             # Only add dice reward if the input is negative
             # Boosts using negative for refining masks
-            correct_input_reward += int(dice_reward > 0.01) * (input_label == 0) * 0.5
+            dice_reward = int(dice_gain > 0.01) * int(dice_score > 0.5)
+            correct_input_reward += dice_reward * int(input_label == 0) * 0.5
 
         # reward = dice_reward + correct_input_reward
         reward = correct_input_reward
 
         # # Add bonus reward if dice score is above a threshold and not the first action
         # dice_reward_coefficient = 2.0 if len(self._last_actions)> 0 else 0.0
-        # reward += int((dice_reward > 0.05)) * dice_reward_coefficient
+        # reward += int((dice_gain > 0.05)) * dice_reward_coefficient
 
         self._last_reward = reward
 
