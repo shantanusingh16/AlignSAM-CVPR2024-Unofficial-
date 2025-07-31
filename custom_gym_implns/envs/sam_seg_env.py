@@ -262,9 +262,14 @@ class SamSegEnv(gym.Env):
             if gt_label == 1:
                 # Reward for correct input for positive class
                 correct_input_reward = int(input_label == gt_label)
-            elif self.penalize_for_wrong_input:
-                # Penalize for wrong input for negative class
-                correct_input_reward = -1 * int(input_label != gt_label)
+            elif self.penalize_for_wrong_input and (input_label != gt_label):
+                # # Penalize equally for wrong input 
+                # correct_input_reward = -1
+
+                # Penalize more for wrong pos than wrong neg 
+                # Since number of neg instances is more, so model will default to neg input_type
+                correct_input_reward = -1 if gt_label == 'pos' else 0.33
+
 
             # # Check if too many negative inputs are given
             # num_input_label = np.sum(np.array(self._last_actions["input_labels"]) == input_label)
