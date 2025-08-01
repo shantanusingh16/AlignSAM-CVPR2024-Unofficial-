@@ -233,3 +233,15 @@ class ExplicitAgent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
+    
+    def state_dict(self, *args, **kwargs):
+        sd = super().state_dict(*args, **kwargs)
+        # Exclude CLIP model weights
+        keys_to_remove = [k for k in sd if k.startswith("clip_model.")]
+        for k in keys_to_remove:
+            del sd[k]
+        return sd
+
+    def load_state_dict(self, state_dict, strict=False):
+        # Load only matching keys, ignore missing CLIP weights
+        super().load_state_dict(state_dict, strict=strict)

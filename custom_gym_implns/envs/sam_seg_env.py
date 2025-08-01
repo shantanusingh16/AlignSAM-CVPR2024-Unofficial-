@@ -191,7 +191,7 @@ class SamSegEnv(gym.Env):
             return input_point
         
         # Move to match the center of foreground portion of the patch, if present
-        patch_half_size = self.img_patch_size // 2
+        patch_half_size = int(self.img_patch_size // 2)
         patch_around_point_xrange = (max(0, input_point[0] - patch_half_size),
                                         min(self.img_shape[1], input_point[0] + patch_half_size))
         patch_around_point_yrange = (max(0, input_point[1] - patch_half_size),

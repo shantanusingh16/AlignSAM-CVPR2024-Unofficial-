@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Install dependencies for the project
-sudo apt install -y libjpeg-dev zlib1g-dev wget
+sudo apt install -y python3-dev python3-setuptools libjpeg-dev zlib1g-dev wget
 
 # Install requirements
 pip install -r requirements.txt
