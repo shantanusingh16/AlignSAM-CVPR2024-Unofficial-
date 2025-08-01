@@ -268,7 +268,7 @@ class SamSegEnv(gym.Env):
 
                 # Penalize more for wrong pos than wrong neg 
                 # Since number of neg instances is more, so model will default to neg input_type
-                correct_input_reward = -1 if gt_label == 'pos' else 0.33
+                correct_input_reward = -1 if gt_label == 'pos' else -0.33
 
 
             # # Check if too many negative inputs are given
