@@ -31,28 +31,28 @@ This repository provides a reinforcement learning framework for interactive segm
   <b> PERSON </b>
   <p align="center">
     <video width="480" controls>
-      <source src="assets/videos/video-person.mp4" type="video/mp4">
+      <source src="https://github.com/shantanusingh16/AlignSAM-CVPR2024-Unofficial-/blob/4ca2ac3ecbbe47ba6ac20b1adf5fefa4e2cd4703/assets/videos/video-person.mp4" type="video/mp4">
       Your browser does not support the video tag.
     </video>
   </p>
   <b> DOG </b>
   <p align="center">
     <video width="480" controls>
-      <source src="assets/videos/video-dog.mp4" type="video/mp4">
+      <source src="https://github.com/shantanusingh16/AlignSAM-CVPR2024-Unofficial-/blob/4ca2ac3ecbbe47ba6ac20b1adf5fefa4e2cd4703/assets/videos/video-dog.mp4" type="video/mp4">
       Your browser does not support the video tag.
     </video>
   </p>
   <b> BUS </b>
   <p align="center">
     <video width="480" controls>
-      <source src="assets/videos/video-bus.mp4" type="video/mp4">
+      <source src="https://github.com/shantanusingh16/AlignSAM-CVPR2024-Unofficial-/blob/4ca2ac3ecbbe47ba6ac20b1adf5fefa4e2cd4703/assets/videos/video-bus.mp4" type="video/mp4">
       Your browser does not support the video tag.
     </video>
   </p>
   <b> CAR </b>
   <p align="center">
     <video width="480" controls>
-      <source src="assets/videos/video-car.mp4" type="video/mp4">
+      <source src="https://github.com/shantanusingh16/AlignSAM-CVPR2024-Unofficial-/blob/4ca2ac3ecbbe47ba6ac20b1adf5fefa4e2cd4703/assets/videos/video-car.mp4" type="video/mp4">
       Your browser does not support the video tag.
     </video>
   </p>
