@@ -18,6 +18,7 @@ class SamSegEnv(gym.Env):
 
     def __init__(self, img_shape, embedding_shape, mask_shape, render_frame_shape,
                  max_steps, target_categories, dataset_config, sam_ckpt_fp, 
+                 penalize_for_wrong_input=True, use_dice_score=False,
                  img_patch_size=None, num_patches=None, render_mode='rgb_array'):
         
         assert len(img_shape) == 3, "Image shape should be (H, W, C)"
@@ -33,12 +34,14 @@ class SamSegEnv(gym.Env):
         assert render_mode in self.metadata["render_modes"], "Invalid render mode"
 
 
-        self.img_shape = img_shape  # The size of the image 
+        self.img_shape = img_shape  # The size of the image (HxWxC)
         self.embedding_shape = embedding_shape  # The size of the SAM image encoder output
-        self.mask_shape = mask_shape  # The size of the mask
+        self.mask_shape = mask_shape  # The size of the mask (HxW)
         self.render_frame_shape = render_frame_shape  # The size of the frame to render
 
         self.max_steps = max_steps  # The maximum number of steps the agent can take
+        self.penalize_for_wrong_input = penalize_for_wrong_input  # Whether to penalize for wrong input
+        self.use_dice_score = use_dice_score
 
         self.target_categories = target_categories  # The categories to segment
         self.dataset_config = dataset_config
@@ -51,10 +54,11 @@ class SamSegEnv(gym.Env):
         self._sam_image_embeddings = None
         self._sam_pred_mask_prob = None
         self._sam_pred_mask = None
-        self._gt_mask = None
+        self._categorical_instance_masks = None # GT binary instance masks with cat-ids as values instead of 1
         self._num_steps = 0
         self._last_actions = {'input_points':[], 'input_labels':[]}
-        self._last_score = 0
+        self._last_reward = 0
+        self._last_best_score = 0
         self.render_mode = render_mode
 
         self.sam_predictor = RepVITSamWrapper(sam_ckpt_fp)
@@ -64,8 +68,10 @@ class SamSegEnv(gym.Env):
         self.observation_space = spaces.Dict(
             {
                 "image": spaces.Box(0, 255, shape=(*img_shape,), dtype=np.uint8),
+                "target_category": spaces.Text(max_length=max(map(len, target_categories))),
                 "sam_image_embeddings": spaces.Box(-np.inf, np.inf, shape=(*embedding_shape,), dtype=np.float32),
                 "sam_pred_mask_prob": spaces.Box(0, 1, shape=(*mask_shape,), dtype=np.float32),
+                "num_steps": spaces.Discrete(max_steps + 1 if max_steps is not None else 1000),
             }
         )
 
@@ -79,11 +85,12 @@ class SamSegEnv(gym.Env):
             num_width_patches = num_height_patches = num_patches
             width_patch_size = img_w / num_width_patches
             height_patch_size = img_h / num_height_patches
+
+            self.img_patch_size = max(width_patch_size, height_patch_size) 
         else:
             raise ValueError("Either img_patch_size or num_patches should be provided")
         # print(num_width_patches, num_height_patches)
 
-        
         # The following dictionary maps abstract actions from `self.action_space` to
         # the input_points and input_labels submitted to SAM in if that action is taken.
         # I.e. 0 corresponds to "(0, 0), positive", 1 to "(0, 0), negative",
@@ -97,13 +104,13 @@ class SamSegEnv(gym.Env):
                 patch_center_y = int(hpatch_idx * height_patch_size + height_patch_size/2)
                 input_point = (patch_center_x, patch_center_y)
                 
-                self._action_to_input[len(self._action_to_input)] = (input_point, 1)
-                self._action_to_input[len(self._action_to_input)] = (input_point, 0)
+                self._action_to_input[len(self._action_to_input)] = (input_point, 'pos')
+                self._action_to_input[len(self._action_to_input)] = (input_point, 'neg')
 
-        # The 2nd last action is to remove previous input
-        # self._action_to_input[num_patches] = ('remove', -1)
-        # The last action is to mark the task as done
-        # self._action_to_input[num_patches + 1] = ('done', -1)
+        # Add 2nd last action to remove previous input
+        # self._action_to_input[len(self._action_to_input)] = ((1e6,1e6), 'remove')
+        # Add last action to mark the task as done
+        # self._action_to_input[len(self._action_to_input)] = ((1e6, 1e6), 'done')
         self.action_space = spaces.Discrete(len(self._action_to_input))
 
         self._load_sample_from_dataset()
@@ -113,22 +120,33 @@ class SamSegEnv(gym.Env):
         # Choose a random sample from the target categories
         self._curr_target_cat = np.random.choice(self.target_categories)
 
-        img, mask = self.dataset.get_sample(target_categories=[self._curr_target_cat])
+        # Expects the image to be in RGB format
+        img, categorical_instance_masks = self.dataset.get_sample(
+            target_categories=[self._curr_target_cat])
 
-        self._image = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), self.img_shape[:2][::-1])
+        self._image = cv2.resize(img, self.img_shape[:2][::-1])
         self.sam_predictor.set_image(self._image)
         self._sam_image_embeddings = self.sam_predictor.get_image_embeddings()
-        self._sam_pred_mask_prob = np.zeros(self.mask_shape, dtype=np.float32)
+        self._sam_pred_mask_prob = np.ones(self.mask_shape, dtype=np.float32) * 0.5
         self._sam_pred_mask = np.zeros(self.img_shape[:2], dtype=np.float32)
 
-        self._gt_mask = cv2.resize(mask, self.img_shape[:2][::-1], interpolation=cv2.INTER_NEAREST)
+        resized_mask = cv2.resize(categorical_instance_masks, 
+                                  self.img_shape[:2][::-1], 
+                                  interpolation=cv2.INTER_NEAREST)
+        
+        # Ensure the mask has 3 dimensions (H, W, K)
+        if len(resized_mask.shape) == 2:
+            resized_mask = resized_mask[..., np.newaxis]
+        self._categorical_instance_masks = resized_mask
 
 
     def _get_obs(self):
         return {
             "image": self._image, 
+            "target_category": self._curr_target_cat,
             "sam_image_embeddings": self._sam_image_embeddings,
             "sam_pred_mask_prob": self._sam_pred_mask_prob,
+            "num_steps": self._num_steps,
         }
     
 
@@ -153,57 +171,127 @@ class SamSegEnv(gym.Env):
 
 
     def convert_raw_input_to_action(self, input_point, input_label):
-        # input_dist = np.array([np.linalg.norm([input_point[0]-point[0], input_point[1]-point[1]]) + \
-        #                        (1e6*(label != input_label)) for (point, label) in env._action_to_input.values() \
-        #                         if type(point) == tuple])
         point_dist = lambda x: np.linalg.norm([input_point[0]-x[0], input_point[1]-x[1]])
         input_dist = np.array([point_dist(point) + (1e6 * (label != input_label)) 
                                for (point, label) in self._action_to_input.values() 
                                if type(point) == tuple])
         sample_action = np.argmin(input_dist)
+
         return sample_action
+    
+
+    def refine_input_point(self, input_point, input_type):
+        if input_type != 'pos':
+            return input_point
+        
+        if self._categorical_instance_masks is None:
+            return input_point
+        
+        if np.any(self._categorical_instance_masks[input_point[1], input_point[0]] == 1):
+            return input_point
+        
+        # Move to match the center of foreground portion of the patch, if present
+        patch_half_size = int(self.img_patch_size // 2)
+        patch_around_point_xrange = (max(0, input_point[0] - patch_half_size),
+                                        min(self.img_shape[1], input_point[0] + patch_half_size))
+        patch_around_point_yrange = (max(0, input_point[1] - patch_half_size),
+                                        min(self.img_shape[0], input_point[1] + patch_half_size))
+        # Get the patch around the point
+        mask_patch = self._categorical_instance_masks[patch_around_point_yrange[0]:patch_around_point_yrange[1],
+                                                        patch_around_point_xrange[0]:patch_around_point_xrange[1]]
+        mask_patch = np.any(mask_patch > 0, axis=-1)  # Combine all instance masks into a single binary mask    
+
+        # If the patch is empty, return the original action
+        if not np.any(mask_patch > 0):
+            return input_point
+        
+        # Move the input point to the center of the foreground portion of the patch
+        foreground_indices = np.argwhere(mask_patch)
+        foreground_indices_center_x = np.mean(foreground_indices[:, 1]) + patch_around_point_xrange[0]
+        foreground_indices_center_y = np.mean(foreground_indices[:, 0]) + patch_around_point_yrange[0]
+        input_point = (int(foreground_indices_center_x), int(foreground_indices_center_y)) 
+        
+        return input_point
 
 
     def compute_reward(self, pred_mask, act):
         # Compute dice score
-        resized_gt_mask = cv2.resize(self._gt_mask,
+        resized_gt_mask = cv2.resize(self._categorical_instance_masks,
                                      pred_mask.shape[::-1],
                                      interpolation=cv2.INTER_NEAREST)
-        assert resized_gt_mask.shape == pred_mask.shape
+        # Ensure the resized_gt_mask has 3 dimensions (H, W, K)
+        if len(resized_gt_mask.shape) == 2:
+            resized_gt_mask = resized_gt_mask[..., np.newaxis]
 
-        intersection = np.sum(resized_gt_mask * pred_mask)
-        union = np.sum(resized_gt_mask) + np.sum(pred_mask) #- intersection
+        if self.use_dice_score:
+            eps = 1e-6
+            # Flatten the binary masks per instance to compute the dice score
+            gt_mask = np.any(resized_gt_mask > 0, axis=-1).astype(np.float32)
+            intersection = np.sum(gt_mask * pred_mask)
+            union = np.sum(gt_mask) + np.sum(pred_mask) #- intersection
+            dice_score = (2 * intersection + eps)/ (union + eps)
 
-        eps = 1e-6
-        dice_score = (2 * intersection + eps)/ (union + eps)
-        dice_reward = dice_score - self._last_score
-        self._last_score = max(dice_score, self._last_score)
+            dice_gain = max(0, dice_score - self._last_best_score)
+            self._last_best_score = max(dice_score, self._last_best_score)
+        else:
+            dice_score = 0.0
+            dice_gain = 0.0
 
         correct_input_reward = 0
         if act == 'add':
-            input_point, input_label = self._last_actions["input_points"][-1], \
-                self._last_actions["input_labels"][-1]
+            input_point = self._last_actions["input_points"][-1]
+            input_label = self._last_actions["input_labels"][-1]
+
+            # Check if the input is repeated
+            if len(self._last_actions["input_points"]) > 1:
+                point_dist = lambda x: np.linalg.norm([input_point[0]-x[0], input_point[1]-x[1]])
+                input_dist = np.array([point_dist(point) + (1e6 * (label != input_label)) \
+                                       for (point, label) in zip(self._last_actions["input_points"][:-1], 
+                                                                 self._last_actions["input_labels"][:-1])])
+                # Use 2 * img_patch_size as a threshold
+                dist_coeff = 1 - np.exp(-np.min(input_dist) / (2 * self.img_patch_size))
+            else:
+                dist_coeff = 1.0
+
             point_image_indices = tuple(map(int, (input_point[1], input_point[0])))
             # print(point_image_indices, input_label)
-            gt_label = self._gt_mask[point_image_indices]
+
+            # Check across instance masks to see if its background or foreground
+            gt_label = np.max(self._categorical_instance_masks[point_image_indices] > 0)
 
             if gt_label == 1:
                 # Reward for correct input for positive class
                 correct_input_reward = int(input_label == gt_label)
-            else:
-                # Penalize for wrong input for negative class
-                correct_input_reward = -1 * int(input_label != gt_label)
+            elif self.penalize_for_wrong_input and (input_label != gt_label):
+                # # Penalize equally for wrong input 
+                # correct_input_reward = -1
+
+                # Penalize more for wrong pos than wrong neg 
+                # Since number of neg instances is more, so model will default to neg input_type
+                correct_input_reward = -1 if gt_label == 'pos' else -0.33
+
 
             # # Check if too many negative inputs are given
             # num_input_label = np.sum(np.array(self._last_actions["input_labels"]) == input_label)
             # if num_input_label > int(self.max_steps * 0.5):
             #     correct_input_reward = 0  # Penalize for too many same input types (even if the last input was correct)
 
+            correct_input_reward *= dist_coeff
+
+            # Only add dice reward if the input is negative
+            # Boosts using negative for refining masks
+            dice_reward = int(dice_gain > 0.01) * int(dice_score > 0.5)
+            correct_input_reward += dice_reward * int(input_label == 0) * 0.5
+
         # reward = dice_reward + correct_input_reward
         reward = correct_input_reward
 
-        # Add bonus reward if dice score is above a threshold and not the first action
-        reward += int((dice_reward > 0.05) and len(self._last_actions)> 0)* 2
+        # # Add bonus reward if dice score is above a threshold and not the first action
+        # dice_reward_coefficient = 2.0 if len(self._last_actions)> 0 else 0.0
+        # reward += int((dice_gain > 0.05)) * dice_reward_coefficient
+
+        self._last_reward = reward
+
         return reward
 
 
@@ -211,31 +299,44 @@ class SamSegEnv(gym.Env):
         if action < 0 or action >= self.action_space.n:
             raise ValueError(f"Invalid action: {action}")
         
-        terminated = self._action_to_input[action][0] == 'done'
-        trunc = (self.max_steps is not None and self._num_steps >= self.max_steps)
-        if terminated or trunc:
-            return self._get_obs(), 0, terminated, trunc, self._get_info()
+        input_point, input_type = self._action_to_input[action]
+        
+        terminated = input_type == 'done'
+        if terminated:
+            return self._get_obs(), 0, terminated, False, self._get_info()
         
     
         act = None
-        if self._action_to_input[action][0] == 'remove':
+        if input_type == 'remove':
             # Remove the last input
             if len(self._last_actions["input_points"]) > 0:
                 self._last_actions["input_points"].pop()
                 self._last_actions["input_labels"].pop()
                 act = 'remove'
-        else:
-            input_point, input_label = self._action_to_input[action]
-            
+        elif input_type in ['pos', 'neg']:
+            # Add a new input point
+            input_label = 1 if input_type == 'pos' else 0 # label 0-neg, 1-pos
+
+            # Refine the input to match the center of the 
+            # foreground portion of the patch, if present
+            input_point = self.refine_input_point(input_point, input_type)
+
             self._last_actions["input_points"].append(input_point)
             self._last_actions["input_labels"].append(input_label)
             act = 'add'
+        elif input_type == 'next':
+            #TODO : Not implemented yet, 
+            # Is meant to be used for predicting the next instance mask
+            act = 'next'
+            self._last_actions = {'input_points':[], 'input_labels':[]}
+        else:
+            raise ValueError(f"Invalid input type: {input_type}")
 
         if len(self._last_actions["input_points"]) > 0:
             self.run_sam()
         else:
             # Set the mask and mask_prob to initial state
-            self._sam_pred_mask_prob = np.zeros(self.mask_shape, dtype=np.float32)
+            self._sam_pred_mask_prob = np.ones(self.mask_shape, dtype=np.float32) * 0.5
             self._sam_pred_mask = np.zeros(self.img_shape[:2], dtype=np.float32)
         
         self._num_steps += 1
@@ -244,6 +345,8 @@ class SamSegEnv(gym.Env):
 
         observation = self._get_obs()
         info = self._get_info()
+
+        trunc = (self.max_steps is not None and self._num_steps >= self.max_steps)
 
         return observation, reward, False, trunc, info
     
@@ -255,7 +358,8 @@ class SamSegEnv(gym.Env):
 
         self._last_actions = {'input_points':[], 'input_labels':[]}
         self._num_steps = 0
-        self._last_score = 0
+        self._last_reward = 0
+        self._last_best_score = 0
 
         observation = self._get_obs()
         info = self._get_info()
@@ -266,8 +370,14 @@ class SamSegEnv(gym.Env):
     def render(self):
         img = cv2.resize(cv2.cvtColor(self._image, cv2.COLOR_RGB2BGR), self.render_frame_shape[::-1])
 
-        gt_mask = cv2.resize((self._gt_mask * 255).astype(np.uint8), self.render_frame_shape[::-1])
-        gt_mask = cv2.cvtColor(gt_mask, cv2.COLOR_GRAY2BGR)
+        mask_instances_color = np.zeros((*self._categorical_instance_masks.shape[:2], 3), dtype=np.uint8)
+        num_instances = self._categorical_instance_masks.shape[-1]
+        for idx in range(num_instances):
+            instance_color = (idx + 1) * int(255 / num_instances)
+            mask_instances_color[self._categorical_instance_masks[..., idx] > 0] = [
+                instance_color, instance_color, instance_color
+            ]
+        gt_mask = cv2.resize(mask_instances_color, self.render_frame_shape[::-1])
 
 
         mask = cv2.cvtColor((self._sam_pred_mask * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
@@ -278,11 +388,21 @@ class SamSegEnv(gym.Env):
         concat_img = np.concatenate([img, gt_mask, mask], axis=1)
 
         if self.render_mode == 'rgb_array':
-            return cv2.cvtColor(concat_img, cv2.COLOR_BGR2RGB)
- 
+            concat_img = cv2.cvtColor(concat_img, cv2.COLOR_BGR2RGB)
+
+        # Add the target category text to the image
         cv2.putText(concat_img,
                     self._curr_target_cat,
                     (10, concat_img.shape[0]//2),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 255, 255),
+                    2)
+        
+        # Add the last reward text to the image
+        cv2.putText(concat_img,
+                    f"Reward: {self._last_reward:.2f}",
+                    (10, concat_img.shape[0]//2 + 50),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,
                     (255, 255, 255),
@@ -298,6 +418,8 @@ if __name__ == "__main__":
     mask_shape = (256, 256) # HxW
     render_frame_shape = (320, 426) # HxW
     max_steps = 5
+    penalize_for_wrong_input = False 
+    use_dice_score = True
     img_patch_size = 32
     render_mode = 'human'
 
@@ -307,9 +429,10 @@ if __name__ == "__main__":
         'data_dir': os.path.join(os.getcwd(), 'data', 'coco-dataset'),
         'data_type': 'val2017',
         'seed': 42,
+        'max_instances': 5,  # Maximum number of instances per image
     }
 
-    sam_ckpt_fp = os.path.join(os.getcwd(), 'weights', 'repvit_sam.pt')
+    sam_ckpt_fp = os.path.join(os.getcwd(), 'RepViT', 'sam', 'weights', 'repvit_sam.pt')
 
     env = SamSegEnv(img_shape=img_shape, 
                     embedding_shape=embedding_shape,
@@ -318,6 +441,8 @@ if __name__ == "__main__":
                     max_steps=max_steps,
                     target_categories=target_categories,
                     dataset_config=dataset_config,
+                    penalize_for_wrong_input=penalize_for_wrong_input,
+                    use_dice_score=use_dice_score,
                     sam_ckpt_fp=sam_ckpt_fp,
                     img_patch_size=img_patch_size,
                     render_mode=render_mode)
@@ -331,15 +456,21 @@ if __name__ == "__main__":
     def get_action(event,x,y,flags,param):
         global sample_action
         if event == cv2.EVENT_LBUTTONUP:
-            tgt_label = 1
+            tgt_label = 'pos'
         elif event == cv2.EVENT_RBUTTONUP:
-            tgt_label = 0
+            tgt_label = 'neg'
         else:
             return
+        # Ensure the coordinates are within the image bounds
+        # Since we concat the images horizontally, we need to adjust the coordinates
         x = x % render_frame_shape[1]
         y = y % render_frame_shape[0]
+
+        # Scale the coordinates to match the original image size
         scaled_x = int(x * img_shape[1] / render_frame_shape[1])
         scaled_y = int(y * img_shape[0] / render_frame_shape[0])
+
+        # Convert the raw input to an action
         sample_action = env.convert_raw_input_to_action((scaled_x, scaled_y), tgt_label)
 
 
@@ -348,7 +479,7 @@ if __name__ == "__main__":
     total_reward = 0
     while True:
         obs, reward, done, trunc, info = env.step(sample_action)
-        print(reward)
+        print('reward:', reward)
         total_reward += reward
 
         # print(obs['image'].shape, info['sam_pred_mask'].shape)

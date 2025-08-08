@@ -13,6 +13,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 class ImplicitAgent(nn.Module):
     def __init__(self, envs, agent_cfg):
         super().__init__()
+        self.debug_mode = agent_cfg.get('debug_mode', False)
         self.network = nn.Sequential(
             layer_init(nn.Conv2d(256, 64, 8, stride=2)),
             nn.ReLU(),

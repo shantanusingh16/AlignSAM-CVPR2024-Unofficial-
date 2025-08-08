@@ -14,6 +14,42 @@ This repository provides a reinforcement learning framework for interactive segm
 - YAML-based configuration for agents and environments
 - RepViT-SAM model wrapper
 
+## TODO
+
+- [ ] Model export for inference/deployment
+- [ ] Support for batch inference for SAM
+- [ ] Support for sharing dataset instance across environments to reduce memory
+- [ ] Support for distributed training
+- [ ] Mixed-precision (AMP) training
+- [ ] Integration with more datasets (ADE20K, CityScapes etc)
+
+## DEMO
+<details>
+  <summary><b>Click to expand demo videos</b></summary>
+  <br/>
+
+  <b> PERSON </b>
+  <p align="center">
+    <img src="assets/videos/video-person.gif" />
+  </p>
+  <b> DOG </b>
+  <p align="center">
+    <img src="assets/videos/video-dog.gif" />
+  </p>
+  <b> BUS </b>
+  <p align="center">
+    <img src="assets/videos/video-bus.gif" />
+  </p>
+  <b> CAR </b>
+  <p align="center">
+    <img src="assets/videos/video-car.gif" />
+  </p>
+
+</details>
+
+## Checkpoints
+You can download the latest checkpoints from [![HuggingFace Space](https://img.shields.io/badge/🤗-HuggingFace%20Space-cyan.svg)](https://huggingface.co/shantanusingh10/AlignSAM-unofficial)
+
 ## Installation
 
 Clone the repository and submodules:
@@ -30,14 +66,27 @@ cd AlignSAM-CVPR2024-Unofficial-
     ```
 
 ## Usage
-- Create a data directory and download/symlink the ```CoCo Dataset``` inside it.
+- Create a data directory and download/symlink the ```CoCo Dataset``` inside it. Follow the reference directory structure below to work with existing config files:
+
+  ```
+    data/
+    ├── images/
+    ├──── val2017/ 
+    ├──────── 00000001.jpg
+    ├──────── 00000002.jpg
+    ├            .
+    ├            .
+    ├            .
+    ├── annotations/
+    ├──── instances_val2017.json
+  ``` 
 
 - Edit configuration files in ```configs/``` to update paths, categories etc.
 
 - Start training:
 
     ```bash
-    python train_sam_align_ppo.py --agent_cfg_path explicit_agent.yaml --env_cfg_path repvit_sam_coco.yaml
+    python train_sam_align_ppo.py --agent_cfg_path configs/agents/explicit_agent.yaml --env_cfg_path configs/envs/repvit_sam_coco.yaml
     ```
 
 ## Project Structure

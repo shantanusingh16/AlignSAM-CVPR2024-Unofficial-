@@ -8,6 +8,11 @@ from torchvision.transforms.functional import to_pil_image
 from CLIP_Surgery import clip
 from CLIP_Surgery.clip.clip_model import ResidualAttentionBlock
 
+import mlflow
+import matplotlib
+matplotlib.use('Agg')
+
+import matplotlib.pyplot as plt
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
@@ -24,6 +29,9 @@ class ExplicitAgent(nn.Module):
             agent_cfg['clip_image_size'],
             agent_cfg['clip_text_prompt']
         )
+
+        self.similarity_scale_temperature = agent_cfg['similarity_scale_temperature']
+        self.debug_mode = agent_cfg.get('debug_mode', False)
 
         self.sam_network = nn.Sequential(
             layer_init(nn.Conv2d(256, 128, 3, stride=2, padding=1, padding_mode='zeros')), # (b, 256, 64, 64)
@@ -67,6 +75,14 @@ class ExplicitAgent(nn.Module):
 
         self.actor = layer_init(nn.Linear(512, envs.single_action_space.n), std=0.01)
         self.critic = layer_init(nn.Linear(512, 1), std=1)
+
+        def get_base_env(env):
+            while hasattr(env, 'env'):
+                env = env.env
+            return env
+        
+        base_env = get_base_env(envs.envs[0])
+        self.max_steps = base_env.max_steps if hasattr(base_env, 'max_steps') else None
 
 
     def setup_clip(self, clip_model_name, clip_image_size, clip_text_prompt):
@@ -114,6 +130,42 @@ class ExplicitAgent(nn.Module):
             
             similarity_map = similarity_map.permute(0, 3, 1, 2) # (b, h, w, c) -> (b, c, h, w)
 
+            # Scale the similarity map
+            channel_scale_map = torch.zeros(len(self.clip_text_prompt), 
+                                            dtype=torch.float32, 
+                                            device=similarity_map.device,
+                                            requires_grad=False)
+            for batch_idx, cat in enumerate(obs["target_category"]):
+                if cat in self.clip_text_prompt:
+                    cat_idx = self.clip_text_prompt.index(cat)
+                    channel_scale_map[cat_idx] = 1 / self.similarity_scale_temperature
+                else:
+                    continue # Skip, since this would just scale down values of all channels
+                
+                # Use soft-max style normalization
+                channel_scale_map = torch.exp(channel_scale_map - torch.logsumexp(channel_scale_map, dim=0))
+                
+                # Add offset to boost the highest channel to scale to 1
+                channel_scale_map += 1 - channel_scale_map.max()
+
+                similarity_map[batch_idx] *= channel_scale_map.view(-1, 1, 1)  # Scale each channel
+
+            if self.debug_mode:
+                # Debugging: visualize the similarity map
+                ncols = len(self.clip_text_prompt) + 1
+                nrows = min(similarity_map.size(0), 2)  # Show at most 2 rows
+                fig, ax = plt.subplots(ncols=ncols, nrows=nrows, figsize=(5*ncols, 3*nrows))
+                for i in range(nrows):
+                    ax[i, 0].imshow(obs["image"][i].cpu().numpy().astype(np.uint8))
+                    ax[i, 0].set_title(obs["target_category"][i])
+                    for j, cat in enumerate(self.clip_text_prompt):
+                        sim_map = similarity_map[i, j].cpu().numpy()
+                        ax[i, j+1].imshow(sim_map, cmap='hot', vmin=0, vmax=1)
+                        ax[i, j+1].set_title(cat)
+                plt.tight_layout()
+                mlflow.log_figure(fig, f"similarity_map_{i}.png")
+                plt.close(fig)
+
             return similarity_map
 
 
@@ -125,8 +177,32 @@ class ExplicitAgent(nn.Module):
         resized_sam_mask_prob = nn.functional.interpolate(
             sam_pred_mask_prob, size=(embedding_shape[2], embedding_shape[3]), 
             mode="bilinear", align_corners=False)
-        resized_sam_mask_prob = resized_sam_mask_prob.repeat(1, embedding_shape[1], 1, 1)
 
+        # Rescale the mask probabilities based on number of steps
+        if ("num_steps" in obs) and self.max_steps is not None:
+            eps = 1e-6
+            temp = torch.exp(self.max_steps - obs["num_steps"])  # Exponential decay
+            p = torch.clamp(resized_sam_mask_prob, min=eps, max=1-eps)
+            logit = torch.logit(p)
+            resized_sam_mask_prob = torch.sigmoid(logit / temp.view(-1, 1, 1, 1))
+
+        if self.debug_mode:
+            # Debugging: visualize the sam embedding and prob map
+
+            fig, ax = plt.subplots(ncols=2, nrows=2, figsize=(6, 6))
+            ax = ax.flatten()
+            for i in range(2):
+                ax[2*i].imshow(obs["image"][i].cpu().numpy().astype(np.uint8))
+                ax[2*i].set_title(obs["target_category"][i])
+                prob_map = resized_sam_mask_prob[i, 0].cpu().numpy()
+                ax[2*i + 1].imshow(prob_map, cmap='hot', vmin=0, vmax=1)
+                ax[2*i +1].set_title("Steps: {}".format(obs.get("num_steps", ["NA", "NA"])[i]))
+            plt.tight_layout()
+            plt.axis('off')
+            mlflow.log_figure(fig, f"sam_prob_map{i}.png")
+            plt.close(fig)
+        
+        resized_sam_mask_prob = resized_sam_mask_prob.repeat(1, embedding_shape[1], 1, 1)
         x = sam_image_embeddings * resized_sam_mask_prob 
         x += sam_image_embeddings # skip connection
 
@@ -157,3 +233,15 @@ class ExplicitAgent(nn.Module):
         if action is None:
             action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
+    
+    def state_dict(self, *args, **kwargs):
+        sd = super().state_dict(*args, **kwargs)
+        # Exclude CLIP model weights
+        keys_to_remove = [k for k in sd if k.startswith("clip_model.")]
+        for k in keys_to_remove:
+            del sd[k]
+        return sd
+
+    def load_state_dict(self, state_dict, strict=False):
+        # Load only matching keys, ignore missing CLIP weights
+        super().load_state_dict(state_dict, strict=strict)
