@@ -30,37 +30,25 @@ This repository provides a reinforcement learning framework for interactive segm
 
   <b> PERSON </b>
   <p align="center">
-    <video width="480" controls>
-      <source src="https://github.com/shantanusingh16/AlignSAM-CVPR2024-Unofficial-/blob/4ca2ac3ecbbe47ba6ac20b1adf5fefa4e2cd4703/assets/videos/video-person.mp4" type="video/mp4">
-      Your browser does not support the video tag.
-    </video>
+    <img src="assets/videos/video-person.gif" />
   </p>
   <b> DOG </b>
   <p align="center">
-    <video width="480" controls>
-      <source src="https://github.com/shantanusingh16/AlignSAM-CVPR2024-Unofficial-/blob/4ca2ac3ecbbe47ba6ac20b1adf5fefa4e2cd4703/assets/videos/video-dog.mp4" type="video/mp4">
-      Your browser does not support the video tag.
-    </video>
+    <img src="assets/videos/video-dog.gif" />
   </p>
   <b> BUS </b>
   <p align="center">
-    <video width="480" controls>
-      <source src="https://github.com/shantanusingh16/AlignSAM-CVPR2024-Unofficial-/blob/4ca2ac3ecbbe47ba6ac20b1adf5fefa4e2cd4703/assets/videos/video-bus.mp4" type="video/mp4">
-      Your browser does not support the video tag.
-    </video>
+    <img src="assets/videos/video-bus.gif" />
   </p>
   <b> CAR </b>
   <p align="center">
-    <video width="480" controls>
-      <source src="https://github.com/shantanusingh16/AlignSAM-CVPR2024-Unofficial-/blob/4ca2ac3ecbbe47ba6ac20b1adf5fefa4e2cd4703/assets/videos/video-car.mp4" type="video/mp4">
-      Your browser does not support the video tag.
-    </video>
+    <img src="assets/videos/video-car.gif" />
   </p>
 
 </details>
 
 ## Checkpoints
-You can download the latest checkpoints from [![HuggingFace Space](https://img.shields.io/badge/🤗-HuggingFace%20Space-cyan.svg)](shantanusingh10/AlignSAM-unofficial)
+You can download the latest checkpoints from [![HuggingFace Space](https://img.shields.io/badge/🤗-HuggingFace%20Space-cyan.svg)](https://huggingface.co/shantanusingh10/AlignSAM-unofficial)
 
 ## Installation
 
