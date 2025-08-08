@@ -16,12 +16,51 @@ This repository provides a reinforcement learning framework for interactive segm
 
 ## TODO
 
+- [ ] Model export for inference/deployment
 - [ ] Support for batch inference for SAM
 - [ ] Support for sharing dataset instance across environments to reduce memory
 - [ ] Support for distributed training
 - [ ] Mixed-precision (AMP) training
 - [ ] Integration with more datasets (ADE20K, CityScapes etc)
-- [ ] Model export for inference/deployment
+
+## DEMO
+<details>
+  <summary><b>Click to expand demo videos</b></summary>
+  <br/>
+
+  <b> PERSON </b>
+  <p align="center">
+    <video width="480" controls>
+      <source src="assets/videos/video-person.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+  </p>
+  <b> DOG </b>
+  <p align="center">
+    <video width="480" controls>
+      <source src="assets/videos/video-dog.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+  </p>
+  <b> BUS </b>
+  <p align="center">
+    <video width="480" controls>
+      <source src="assets/videos/video-bus.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+  </p>
+  <b> CAR </b>
+  <p align="center">
+    <video width="480" controls>
+      <source src="assets/videos/video-car.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+  </p>
+
+</details>
+
+## Checkpoints
+You can download the latest checkpoints from [![HuggingFace Space](https://img.shields.io/badge/🤗-HuggingFace%20Space-cyan.svg)](shantanusingh10/AlignSAM-unofficial)
 
 ## Installation
 
