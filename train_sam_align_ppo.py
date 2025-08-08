@@ -39,11 +39,11 @@ class Args:
     """the logging directory for the experiment"""
     resume_from: str = None
     """the path to the checkpoint for resuming the training"""
-    checkpoint_iter_freq: int = 50
+    checkpoint_iter_freq: int = 1000
     """the frequency of making checkpoint (if applicable)"""
     capture_video: bool = True
     """whether to capture videos of the agent performances (check out `{log_dir}/{run_name}/videos` folder)"""
-    capture_ep_freq: int = 100
+    capture_ep_freq: int = 1000
     """the frequency of capturing videos of the agent performances"""
 
     # Algorithm specific arguments
@@ -53,9 +53,9 @@ class Args:
     """the environment configuration path"""
     agent_cfg_path: str = "configs/agents/explicit_agent.yaml"
     """the type of the agent"""
-    total_timesteps: int = 500000
+    total_timesteps: int = 20000000
     """total timesteps of the experiments"""
-    learning_rate: float = 2.5e-4
+    learning_rate: float = 5e-5
     """the learning rate of the optimizer"""
     num_envs: int = 8
     """the number of parallel game environments"""

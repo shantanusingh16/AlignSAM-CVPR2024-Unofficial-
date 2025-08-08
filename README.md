@@ -14,6 +14,15 @@ This repository provides a reinforcement learning framework for interactive segm
 - YAML-based configuration for agents and environments
 - RepViT-SAM model wrapper
 
+## TODO
+
+- [ ] Support for batch inference for SAM
+- [ ] Support for sharing dataset instance across environments to reduce memory
+- [ ] Support for distributed training
+- [ ] Mixed-precision (AMP) training
+- [ ] Integration with more datasets (ADE20K, CityScapes etc)
+- [ ] Model export for inference/deployment
+
 ## Installation
 
 Clone the repository and submodules:
