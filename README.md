@@ -4,7 +4,7 @@ Unofficial open-source implementation of AlignSAM (CVPR 2024).
 
 ## Overview
 
-This repository provides a reinforcement learning framework for interactive segmentation using SAM (Segment Anything Model) and CLIP Surgery, inspired by the AlignSAM approach. It includes custom Gymnasium environments, agent architectures, and training scripts for PPO-based policy optimization.
+This repository provides a reinforcement learning framework for interactive segmentation using SAM (Segment Anything Model) and CLIP Surgery, inspired by the AlignSAM approach. It includes custom Gymnasium environments, agent architectures, and training scripts for PPO-based policy optimization. For more details, please refer to the [Design Doc](./DESIGN.md).
 
 ## Features
 
