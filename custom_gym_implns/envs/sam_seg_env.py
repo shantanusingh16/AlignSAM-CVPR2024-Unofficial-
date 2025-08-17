@@ -257,22 +257,23 @@ class SamSegEnv(gym.Env):
             # print(point_image_indices, input_label)
 
             # Check across instance masks to see if its background or foreground
-            gt_label = np.max(self._categorical_instance_masks[point_image_indices] > 0)
+            gt_label = np.any(self._categorical_instance_masks[point_image_indices] > 0)
 
             if gt_label == 1:
                 # Reward for correct input for positive class
                 correct_input_reward = int(input_label == gt_label)
-            elif self.penalize_for_wrong_input and (input_label != gt_label):
+
+            if self.penalize_for_wrong_input and (input_label != gt_label):
                 # # Penalize equally for wrong input 
                 # correct_input_reward = -1
 
-                # Penalize more for wrong pos than wrong neg 
+                # Penalize more for false pos (gt_label=1) than false neg (gt_label=0)
                 # Since number of neg instances is more, so model will default to neg input_type
-                correct_input_reward = -1 if gt_label == 'pos' else -0.33
+                correct_input_reward = -1 if gt_label == 1 else -0.33
 
 
             # # Check if too many negative inputs are given
-            # num_input_label = np.sum(np.array(self._last_actions["input_labels"]) == input_label)
+            # num_input_label = np.sum(np.array(self._last_actions["input_labels"]) == 0)
             # if num_input_label > int(self.max_steps * 0.5):
             #     correct_input_reward = 0  # Penalize for too many same input types (even if the last input was correct)
 
@@ -418,7 +419,7 @@ if __name__ == "__main__":
     mask_shape = (256, 256) # HxW
     render_frame_shape = (320, 426) # HxW
     max_steps = 5
-    penalize_for_wrong_input = False 
+    penalize_for_wrong_input = True 
     use_dice_score = True
     img_patch_size = 32
     render_mode = 'human'
